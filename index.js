@@ -66,7 +66,7 @@ async function create_subscription(streamer_id) {
         },
         "transport": {
           "method": "webhook",
-          "callback": "https://channel-update-bot-api.onrender.com/notifications",
+          "callback": "https://stream-updates-bot-api.onrender.com/notifications",
           "secret": "temppassword"
         }
       };
