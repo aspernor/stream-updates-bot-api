@@ -174,6 +174,10 @@ async function create_ruleset(streamer_name, dm_channel_id) {
         "name": streamer_name,
         "rules": [
                       {
+                          "type": "transform",
+                          "transformation_id": "trs_uG3UE3yq8wHZWT"
+                      },
+                      {
                           "type": "filter",
                           "headers": {
                               "twitch-channel": {
@@ -205,6 +209,10 @@ async function create_connection(streamer_name, dm_channel_id) {
             }
         },
         "rules": [
+                      {
+                          "type": "transform",
+                          "transformation_id": "trs_uG3UE3yq8wHZWT"
+                      },
                       {
                           "type": "filter",
                           "headers": {
