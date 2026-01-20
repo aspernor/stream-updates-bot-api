@@ -33,8 +33,7 @@ const twitch_hookdeck_transformation =
 const kick_hookdeck_transformation = process.env.KICK_HOOKDECK_TRANSFORMATION;
 const discord_bot_log_url = process.env.DISCORD_BOT_LOGO_URL;
 const twitch_logo_url = process.env.TWITCH_LOGO_URL;
-const kick_logo_url =  process.env.KICK_LOGO_URL;
-
+const kick_logo_url = process.env.KICK_LOGO_URL;
 
 const twitch_headers = {
   "Content-Type": "application/json",
@@ -57,9 +56,9 @@ const hookdeck_headers = {
 };
 
 const bot_footer = {
-          text: "Stream Updates Bot",
-          icon_url: discord_bot_log_url,
-        }
+  text: "Stream Updates Bot",
+  icon_url: discord_bot_log_url,
+};
 
 //ngrok setup, set DEVELOPMENT env variable to true. Don't forget to change interaction endpoint in discord and kick application portal
 
@@ -133,7 +132,7 @@ async function get_kick_profile_pic_url(subscriptionData, res) {
       ((subscriptionData.profile_pic_url =
         response.data.data[0].profile_picture),
         (subscriptionData.streamer_name = response.data.data[0].name));
-      add_profile_pic_to_kick_transformations_env(subscriptionData, res);
+      check_for_existing_kick_connections(subscriptionData, res);
     })
     .catch((err) => {
       console.log(err);
@@ -305,7 +304,8 @@ async function send_instruction_message(thread_id, dm_channel_id) {
           },
           {
             name: "Unsubscribe From Updates",
-            value: "> </unsubscribe:1460768302581289063>  `platform`  `streamer`",
+            value:
+              "> </unsubscribe:1460768302581289063>  `platform`  `streamer`",
           },
           {
             name: "View Active Subscriptions",
@@ -313,7 +313,7 @@ async function send_instruction_message(thread_id, dm_channel_id) {
           },
           {
             name: "Your Notifications Thread",
-            value: `>>> <#${thread_id}>\n1. Open the thread\n2. Tap the thread name\n3. Go to **Notification Settings** (🔔)\n4. Enable for **All Messages**`
+            value: `>>> <#${thread_id}>\n1. Open the thread\n2. Tap the thread name\n3. Go to **Notification Settings** (🔔)\n4. Enable for **All Messages**`,
           },
           {
             name: "Donate",
@@ -338,12 +338,10 @@ async function user_already_subscribed(subscriptionData, res) {
   let platform_logo_url = "";
   if (platform == "twitch") {
     platform_name = "Twitch";
-    platform_logo_url =
-      twitch_logo_url;
+    platform_logo_url = twitch_logo_url;
   } else if (platform == "kick") {
     platform_name = "Kick";
-    platform_logo_url =
-      kick_logo_url;
+    platform_logo_url = kick_logo_url;
   }
 
   const userAlreadySubscribedMessage = (streamer_name) => ({
@@ -371,12 +369,10 @@ async function user_not_subscribed(subscriptionData, res) {
   let platform_logo_url = "";
   if (platform == "twitch") {
     platform_name = "Twitch";
-    platform_logo_url =
-      twitch_logo_url;
+    platform_logo_url = twitch_logo_url;
   } else if (platform == "kick") {
     platform_name = "Kick";
-    platform_logo_url =
-      kick_logo_url;
+    platform_logo_url = kick_logo_url;
   }
 
   const userNotSubscribedMessage = (streamer_name) => ({
@@ -403,12 +399,10 @@ async function user_cannot_be_found(subscriptionData, res) {
   let platform_logo_url = "";
   if (platform == "twitch") {
     platform_name = "Twitch";
-    platform_logo_url =
-      twitch_logo_url;
+    platform_logo_url = twitch_logo_url;
   } else if (platform == "kick") {
     platform_name = "Kick";
-    platform_logo_url =
-      kick_logo_url;
+    platform_logo_url = kick_logo_url;
   }
 
   const userNotFoundMessage = {
@@ -439,12 +433,10 @@ async function send_subscription_confirmation_interactions(
   let platform_logo_url = "";
   if (platform == "twitch") {
     platform_name = "Twitch";
-    platform_logo_url =
-      twitch_logo_url;
+    platform_logo_url = twitch_logo_url;
   } else if (platform == "kick") {
     platform_name = "Kick";
-    platform_logo_url =
-      kick_logo_url;
+    platform_logo_url = kick_logo_url;
   }
 
   const subscriptionMessage = {
@@ -478,12 +470,10 @@ async function send_unsubscription_confirmation_interactions(
   let platform_logo_url = "";
   if (platform == "twitch") {
     platform_name = "Twitch";
-    platform_logo_url =
-      twitch_logo_url;
+    platform_logo_url = twitch_logo_url;
   } else if (platform == "kick") {
     platform_name = "Kick";
-    platform_logo_url =
-      kick_logo_url;
+    platform_logo_url = kick_logo_url;
   }
 
   const unsubscriptionMessage = {
@@ -528,38 +518,6 @@ async function add_profile_pic_to_transformations_env(subscriptionData, res) {
         })
         .then((response) => {
           check_for_existing_connections(subscriptionData, res);
-        })
-        .catch((err) => {
-          console.error(err);
-        });
-    })
-    .catch((err) => {
-      console.error(err);
-    });
-}
-
-async function add_profile_pic_to_kick_transformations_env(
-  subscriptionData,
-  res,
-) {
-  const { broadcaster_user_id, profile_pic_url } = subscriptionData;
-
-  const url = `https://api.hookdeck.com/2025-07-01/transformations/${kick_hookdeck_transformation}`;
-  axios
-    .get(url, {
-      headers: hookdeck_headers,
-    })
-    .then((response) => {
-      const data = {
-        env: { ...response.data.env, [broadcaster_user_id]: profile_pic_url },
-      };
-
-      axios
-        .put(url, data, {
-          headers: hookdeck_headers,
-        })
-        .then((response) => {
-          check_for_existing_kick_connections(subscriptionData, res);
         })
         .catch((err) => {
           console.error(err);
