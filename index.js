@@ -15,6 +15,7 @@ app.use(
 const port = process.env.PORT || 3000;
 
 //CONSTS
+const host_url = process.env.HOST_URL;
 const twitch_token = process.env.TWITCH_TOKEN;
 const kick_token = process.env.KICK_TOKEN;
 const twitch_client_id = process.env.TWITCH_CLIENT_ID;
@@ -88,7 +89,7 @@ async function get_twitch_user_id(subscriptionData, res) {
             response.data.data[0]["profile_image_url"]),
           (subscriptionData.streamer_name =
             response.data.data[0]["display_name"]));
-        add_profile_pic_to_transformations_env(subscriptionData, res);
+        check_for_existing_connections(subscriptionData, res);
       } else {
         user_cannot_be_found(subscriptionData, res);
       }
@@ -120,6 +121,23 @@ async function get_kick_user_id(subscriptionData, res) {
   return response;
 }
 
+async function get_twitch_profile_pic_url(streamer_name) {
+  const url = `https://api.twitch.tv/helix/users?login=${streamer_name}`;
+
+  const response = await axios
+    .get(url, {
+      headers: twitch_headers,
+    })
+    .then((response) => {
+      return response.data.data[0]["profile_image_url"];
+    })
+    .catch((err) => {
+      console.log(err);
+    });
+
+  return response;
+}
+
 async function get_kick_profile_pic_url(subscriptionData, res) {
   const { broadcaster_user_id } = subscriptionData;
   const url = `https://api.kick.com/public/v1/users?id=${broadcaster_user_id}`;
@@ -141,7 +159,7 @@ async function get_kick_profile_pic_url(subscriptionData, res) {
   return response;
 }
 
-async function create_subscription(source_url, subscriptionData) {
+async function create_subscription(subscriptionData) {
   const { broadcaster_user_id } = subscriptionData;
   const url = `https://api.twitch.tv/helix/eventsub/subscriptions`;
   const data = {
@@ -152,7 +170,7 @@ async function create_subscription(source_url, subscriptionData) {
     },
     transport: {
       method: "webhook",
-      callback: source_url,
+      callback: `${host_url}/twitch`,
       secret: twitch_eventsub_secret,
     },
   };
@@ -499,35 +517,6 @@ async function send_unsubscription_confirmation_interactions(
 
 //Hookdeck API Calls
 
-async function add_profile_pic_to_transformations_env(subscriptionData, res) {
-  const { broadcaster_user_id, profile_pic_url } = subscriptionData;
-
-  const url = `https://api.hookdeck.com/2025-07-01/transformations/${twitch_hookdeck_transformation}`;
-  axios
-    .get(url, {
-      headers: hookdeck_headers,
-    })
-    .then((response) => {
-      const data = {
-        env: { ...response.data.env, [broadcaster_user_id]: profile_pic_url },
-      };
-
-      axios
-        .put(url, data, {
-          headers: hookdeck_headers,
-        })
-        .then((response) => {
-          check_for_existing_connections(subscriptionData, res);
-        })
-        .catch((err) => {
-          console.error(err);
-        });
-    })
-    .catch((err) => {
-      console.error(err);
-    });
-}
-
 async function get_destination_id(subscriptionData, res) {
   const { discord_user_id } = subscriptionData;
 
@@ -656,6 +645,26 @@ async function create_kick_source(subscriptionData, res) {
   return response;
 }
 
+async function get_twitch_source_url(broadcaster_user_id, streamer_name) {
+  const url = `https://api.hookdeck.com/2025-07-01/sources`;
+  const data = {
+    name: `${broadcaster_user_id}`,
+    description: `Twitch: ${streamer_name}`,
+  };
+  const response = await axios
+    .put(url, data, {
+      headers: hookdeck_headers,
+    })
+    .then((response) => {
+      return response.data.url;
+    })
+    .catch((err) => {
+      console.log(err);
+    });
+
+  return response;
+}
+
 async function get_kick_source_url(broadcaster_user_id, streamer_name) {
   const url = `https://api.hookdeck.com/2025-07-01/sources`;
   const data = {
@@ -735,7 +744,7 @@ async function create_connection(source_url, subscriptionData, res) {
     headers: hookdeck_headers,
   });
 
-  create_subscription(source_url, subscriptionData);
+  create_subscription(subscriptionData);
 
   send_subscription_confirmation_interactions(subscriptionData, res);
 }
@@ -863,6 +872,35 @@ app.get("/", (req, res) => {
 
 app.post("/", (req, res) => {
   console.log(req.body);
+});
+
+app.post("/twitch", async (req, res) => {
+  if (req.body.challenge != null) {
+    console.log("Query challenge: " + req.query.challenge);
+
+    res.type("txt");
+    res.send(req.body.challenge);
+    return;
+  }
+
+  const url = await get_twitch_source_url(
+    req.body.event.broadcaster_user_id,
+    req.body.event.broadcaster_user_name,
+  );
+
+  const profile_pic_url = await get_twitch_profile_pic_url(
+    req.body.event.broadcaster_user_login,
+  ); // TODO
+
+  axios.post(url, req.body, {
+    headers: {
+      "twitch-event-timestamp":
+        req.headers["twitch-eventsub-message-timestamp"],
+      "profile-picture": profile_pic_url,
+    },
+  });
+
+  res.sendStatus(200);
 });
 
 app.post("/kick", async (req, res) => {
