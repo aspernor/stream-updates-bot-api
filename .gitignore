@@ -1,3 +1,12 @@
 node_modules
 .env
 purge_subscriptions.js
+eslint.config.mjs
+get_transformation_env_variables.js
+hookdeck_transformation.js
+purge_destinations.js
+purge_sources.js
+purge_env_variables.js
+purge_threads.js
+README.md
+backup.js

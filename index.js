@@ -1,334 +1,1045 @@
-const express = require('express')
-const axios = require('axios');
-require('dotenv').config()
+const express = require("express");
+const axios = require("axios");
+const nacl = require("tweetnacl");
+const ngrok = require("@ngrok/ngrok");
+require("dotenv").config();
 
 var app = express();
-app.use(express.json());
-const port = 3000;
-
+app.use(
+  express.json({
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    },
+  }),
+);
+const port = process.env.PORT || 3000;
 
 //CONSTS
 const twitch_token = process.env.TWITCH_TOKEN;
+const kick_token = process.env.KICK_TOKEN;
 const twitch_client_id = process.env.TWITCH_CLIENT_ID;
+const twitch_eventsub_secret = process.env.TWITCH_EVENTSUB_SECRET;
 const discord_token = process.env.DISCORD_TOKEN;
 const hookdeck_token = process.env.HOOKDECK_TOKEN;
+const discord_public_key = process.env.DISCORD_PUBLIC_KEY;
+const ngrok_token = process.env.NGROK_TOKEN;
+const discord_stream_updates_channel =
+  process.env.DISCORD_STREAM_UPDATES_CHANNEL_ID;
+const discord_webhook_id = process.env.DISCORD_WEBHOOK_ID;
+const discord_webhook_token = process.env.DISCORD_WEBHOOK_TOKEN;
+const discord_application_id = process.env.DISCORD_APPLICATION_ID;
+const twitch_hookdeck_transformation =
+  process.env.TWITCH_HOOKDECK_TRANSFORMATION;
+const kick_hookdeck_transformation = process.env.KICK_HOOKDECK_TRANSFORMATION;
 
 const twitch_headers = {
-    'Content-Type': 'application/json',
-    'Authorization': twitch_token,
-    'Client-ID': twitch_client_id
-}
+  "Content-Type": "application/json",
+  Authorization: twitch_token,
+  "Client-ID": twitch_client_id,
+};
+const kick_headers = {
+  "Content-Type": "application/json",
+  Authorization: kick_token,
+};
 
-const discord_headers =  {
-    'Content-Type': 'application/json',
-    'Authorization': discord_token
-}
+const discord_headers = {
+  "Content-Type": "application/json",
+  Authorization: discord_token,
+};
 
 const hookdeck_headers = {
-    'Content-Type': 'application/json',
-    'Authorization': hookdeck_token
-}
+  "Content-Type": "application/json",
+  Authorization: hookdeck_token,
+};
 
+//ngrok setup, set DEVELOPMENT env variable to true. Don't forget to change interaction endpoint in discord and kick application portal
+
+if (process.env.NODE_ENV === "dev") {
+  (async () => {
+    const listener = await ngrok.forward({
+      addr: port,
+      authtoken: ngrok_token,
+    });
+    console.log(`Ingress established at: ${listener.url()}`);
+  })();
+}
 
 //Twitch API Calls
-async function get_user_id(streamer_name, dm_channel_id, action) {
-    const url = `https://api.twitch.tv/helix/users?login=${streamer_name}`;
+async function get_twitch_user_id(subscriptionData, res) {
+  const { streamer_name } = subscriptionData;
+  const url = `https://api.twitch.tv/helix/users?login=${streamer_name}`;
 
-    await axios.get(url,
-    {
-        headers: twitch_headers
+  await axios
+    .get(url, {
+      headers: twitch_headers,
     })
-    .then(response => {
-        if(response.data.data[0]) {
-            if (action == "subscribe") {
-                create_subscription(response.data.data[0]['id']);
-            }
-            check_for_existing_connections(streamer_name, dm_channel_id, action);
-        }
-        else {
-            user_cannot_be_found(dm_channel_id);
-        }
+    .then((response) => {
+      if (response.data.data[0]) {
+        ((subscriptionData.broadcaster_user_id = response.data.data[0]["id"]),
+          (subscriptionData.profile_pic_url =
+            response.data.data[0]["profile_image_url"]),
+          (subscriptionData.streamer_name =
+            response.data.data[0]["display_name"]));
+        add_profile_pic_to_transformations_env(subscriptionData, res);
+      } else {
+        user_cannot_be_found(subscriptionData, res);
+      }
     })
-    .catch(err => {
-        // Handle errors
-        console.error(err);
-        user_cannot_be_found(dm_channel_id);
+    .catch((err) => {
+      console.log(err);
+      user_cannot_be_found(subscriptionData, res);
     });
 }
 
-async function create_subscription(streamer_id) {
-    const url = `https://api.twitch.tv/helix/eventsub/subscriptions`;
-	const data = {
-        "type": "channel.update",
-        "version": "2",
-        "condition": {
-          "broadcaster_user_id": streamer_id
-        },
-        "transport": {
-          "method": "webhook",
-          "callback": "https://stream-updates-bot-api.onrender.com/notifications",
-          "secret": "temppassword"
-        }
-      };
-    const response = await axios.post(url, data,
-    {
-    headers: twitch_headers
-    }).then(response => {
-        //console.log(response)
+async function get_kick_user_id(subscriptionData, res) {
+  const { streamer_name } = subscriptionData;
+  const url = `https://api.kick.com/public/v1/channels?slug=${streamer_name}`;
+
+  const response = await axios
+    .get(url, {
+      headers: kick_headers,
     })
-    .catch(err => {
-        // Handle errors
-        //console.error(err);;
+    .then((response) => {
+      subscriptionData.broadcaster_user_id =
+        response.data.data[0].broadcaster_user_id;
+      get_kick_profile_pic_url(subscriptionData, res);
+    })
+    .catch((err) => {
+      console.log(err);
+      user_cannot_be_found(subscriptionData, res);
+    });
+
+  return response;
+}
+
+async function get_kick_profile_pic_url(subscriptionData, res) {
+  const { broadcaster_user_id } = subscriptionData;
+  const url = `https://api.kick.com/public/v1/users?id=${broadcaster_user_id}`;
+
+  const response = await axios
+    .get(url, {
+      headers: kick_headers,
+    })
+    .then((response) => {
+      ((subscriptionData.profile_pic_url =
+        response.data.data[0].profile_picture),
+        (subscriptionData.streamer_name = response.data.data[0].name));
+      add_profile_pic_to_kick_transformations_env(subscriptionData, res);
+    })
+    .catch((err) => {
+      console.log(err);
+    });
+
+  return response;
+}
+
+async function create_subscription(source_url, subscriptionData) {
+  const { broadcaster_user_id } = subscriptionData;
+  const url = `https://api.twitch.tv/helix/eventsub/subscriptions`;
+  const data = {
+    type: "channel.update",
+    version: "2",
+    condition: {
+      broadcaster_user_id: broadcaster_user_id,
+    },
+    transport: {
+      method: "webhook",
+      callback: source_url,
+      secret: twitch_eventsub_secret,
+    },
+  };
+
+  axios
+    .post(url, data, {
+      headers: twitch_headers,
+    })
+    .then((response) => {
+      console.log(response);
+    })
+    .catch((err) => {
+      console.error(err);
     });
 }
 
+async function create_kick_subscription(subscriptionData) {
+  const { broadcaster_user_id } = subscriptionData;
+  const url = `https://api.kick.com/public/v1/events/subscriptions`;
+  const data = {
+    broadcaster_user_id: broadcaster_user_id,
+    method: "webhook",
+    events: [
+      {
+        name: "livestream.metadata.updated",
+        version: 1,
+      },
+    ],
+  };
 
+  axios
+    .post(url, data, {
+      headers: kick_headers,
+    })
+    .then((response) => {
+      console.log(response);
+    })
+    .catch((err) => {
+      console.error(err);
+    });
+}
 
 //Discord API Calls
-async function user_already_subscribed(streamer_name, dm_channel_id) {
-    const url = `https://discord.com/api/channels/${dm_channel_id}/messages`;
-    const data = {
-        "embeds": [
-            {
-                "title": "Error",
-                "description": `You are already subscribed to ${streamer_name}!`
-            }
-        ]
-    };
-    const response = await axios.post(url, data,
-    {
-    headers: discord_headers
+async function get_discord_dm_channel_id(thread_id, discord_user_id) {
+  const url = `https://discord.com/api/users/@me/channels`;
+
+  const data = { recipient_id: discord_user_id };
+
+  axios
+    .post(url, data, {
+      headers: discord_headers,
+    })
+    .then((response) => {
+      send_instruction_message(thread_id, response.data.id);
+    })
+    .catch((err) => {
+      console.error(err);
     });
 }
 
-async function user_not_subscribed(streamer_name, dm_channel_id) {
-    const url = `https://discord.com/api/channels/${dm_channel_id}/messages`;
-    const data = {
-        "embeds": [
-            {
-                "title": "Error",
-                "description": `You are not subscribed to ${streamer_name}!`
-            }
-        ]
-    };
-    const response = await axios.post(url, data,
-    {
-    headers: discord_headers
+async function create_thread(discord_user_id) {
+  const url = `https://discord.com/api/channels/${discord_stream_updates_channel}/threads`;
+
+  const data = {
+    name: "notifications",
+    type: 12,
+    invitable: false,
+    auto_archive_duration: 60,
+  };
+
+  axios
+    .post(url, data, {
+      headers: discord_headers,
+    })
+    .then((response) => {
+      create_destination(discord_user_id, response.data.id);
+      add_user_to_private_thread(response.data.id, discord_user_id);
+    })
+    .catch((err) => {
+      console.error(err);
     });
 }
 
-async function user_cannot_be_found(dm_channel_id) {
-    const url = `https://discord.com/api/channels/${dm_channel_id}/messages`;
-    const data = {
-        "embeds": [
-            {
-                "title": "Error",
-                "description": `User cannot be found!`
-            }
-        ]
-    };
-    const response = await axios.post(url, data,
-    {
-    headers: discord_headers
+//Twitch API Calls
+async function get_thread(thread_id) {
+  const url = `https://discord.com/api/channels/${thread_id}`;
+
+  const response = await axios
+    .get(url, {
+      headers: discord_headers,
+    })
+    .then((response) => {
+      return true;
+    })
+    .catch((err) => {
+      console.log(err);
+      return false;
+    });
+
+  return response;
+}
+
+async function get_private_thread_id(discord_user_id) {
+  //Find hookdeck destination with user id as name, then get the description to find thread_id
+
+  const response = await get_destination_description(discord_user_id);
+
+  //Double check if thread still exists
+
+  if (response.data.count == 0) {
+    create_thread(discord_user_id);
+  } else {
+    const thread_id = response.data.models[0].description;
+    const thread_still_exists = await get_thread(thread_id);
+    if (thread_still_exists) {
+      add_user_to_private_thread(thread_id, discord_user_id);
+    } else {
+      create_thread(discord_user_id);
+    }
+  }
+}
+
+async function add_user_to_private_thread(thread_id, discord_user_id) {
+  const url = `https://discord.com/api/channels/${thread_id}/thread-members/${discord_user_id}`;
+  const data = {};
+  axios
+    .put(url, data, {
+      headers: discord_headers,
+    })
+    .then((response) => {
+      get_discord_dm_channel_id(thread_id, discord_user_id);
+    })
+    .catch((err) => {
+      console.log(err);
     });
 }
 
-async function send_subscription_confirmation(streamer_name, dm_channel_id) {
-    const url = `https://discord.com/api/channels/${dm_channel_id}/messages`;
-    const data = {
-        "embeds": [
-            {
-                "title": "Success",
-                "description": `Subscription to ${streamer_name} added!`
-            }
-        ]
-    };
-    const response = await axios.post(url, data,
-    {
-    headers: discord_headers
-    });
+async function send_instruction_message(thread_id, dm_channel_id) {
+  const url = `https://discord.com/api/channels/${dm_channel_id}/messages`;
+
+  const instructionMessage = {
+    embeds: [
+      {
+        title: "**Welcome!**",
+        description:
+          "Use </subscribe:1460766853688332361> to subscribe to updates.\n\n Use </unsubscribe:1460768302581289063> to unsubscribe from updates.\n\n Use </subscriptions:1460521521402609771> to view active subscriptions.",
+        author: {
+          name: "Stream Updates Bot",
+        },
+        fields: [
+          {
+            name: "\b",
+            value: " ",
+            inline: "false",
+          },
+          {
+            name: "Your Notifications Thread",
+            value: `<#${thread_id}>\n\nOpen the thread.\nTap the thread name.\nGo to **Notification Settings** (🔔).\nEnable for **All Messages**.`,
+            inline: true,
+          },
+          {
+            name: "\b",
+            value: " ",
+            inline: "false",
+          },
+          {
+            name: "Donate",
+            value: "<#1460978877533786205>",
+            inline: true,
+          },
+        ],
+        footer: {
+          text: "Donations are optional but appreciated :)\nDon't forget to turn on notifications.",
+        },
+      },
+    ],
+  };
+
+  const data = instructionMessage;
+  axios.post(url, data, {
+    headers: discord_headers,
+  });
 }
 
-async function send_unsubscription_confirmation(streamer_name, dm_channel_id) {
-    const url = `https://discord.com/api/channels/${dm_channel_id}/messages`;
-    const data = {
-        "embeds": [
-            {
-                "title": "Success",
-                "description": `Subscription to ${streamer_name} removed!`
-            }
-        ]
-    };
-    const response = await axios.post(url, data,
-    {
-    headers: discord_headers
-    });
+async function user_already_subscribed(subscriptionData, res) {
+  const { streamer_name, platform, interaction } = subscriptionData;
+
+  let platform_name = "";
+  let platform_logo_url = "";
+  if (platform == "twitch") {
+    platform_name = "Twitch";
+    platform_logo_url =
+      "https://www.freepnglogos.com/uploads/purple-twitch-logo-png-18.png";
+  } else if (platform == "kick") {
+    platform_name = "Kick";
+    platform_logo_url =
+      "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSlNyIfloQPTGE4GpqKvNVgJiTF0jVeO0B-Og&s";
+  }
+
+  const userAlreadySubscribedMessage = (streamer_name) => ({
+    embeds: [
+      {
+        title: "Error",
+        description: `> You are already subscribed to **${streamer_name}**!`,
+        author: { name: "Stream Updates Bot" },
+        footer: {
+          text: platform_name,
+          icon_url: platform_logo_url,
+        },
+      },
+    ],
+  });
+
+  const callback_url = `https://discord.com/api/webhooks/${discord_application_id}/${interaction.token}`;
+
+  axios.post(callback_url, userAlreadySubscribedMessage(streamer_name), {
+    headers: discord_headers,
+  });
 }
 
+async function user_not_subscribed(subscriptionData, res) {
+  const { streamer_name, platform, interaction } = subscriptionData;
 
+  let platform_name = "";
+  let platform_logo_url = "";
+  if (platform == "twitch") {
+    platform_name = "Twitch";
+    platform_logo_url =
+      "https://www.freepnglogos.com/uploads/purple-twitch-logo-png-18.png";
+  } else if (platform == "kick") {
+    platform_name = "Kick";
+    platform_logo_url =
+      "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSlNyIfloQPTGE4GpqKvNVgJiTF0jVeO0B-Og&s";
+  }
+
+  const userNotSubscribedMessage = (streamer_name) => ({
+    embeds: [
+      {
+        title: "Error",
+        description: `> You are not subscribed to **${streamer_name}**!`,
+        author: { name: "Stream Updates Bot" },
+        footer: {
+          text: platform_name,
+          icon_url: platform_logo_url,
+        },
+      },
+    ],
+  });
+
+  const callback_url = `https://discord.com/api/webhooks/${discord_application_id}/${interaction.token}`;
+
+  axios.post(callback_url, userNotSubscribedMessage(streamer_name), {
+    headers: discord_headers,
+  });
+}
+
+async function user_cannot_be_found(subscriptionData, res) {
+  const { platform, interaction } = subscriptionData;
+  let platform_name = "";
+  let platform_logo_url = "";
+  if (platform == "twitch") {
+    platform_name = "Twitch";
+    platform_logo_url =
+      "https://www.freepnglogos.com/uploads/purple-twitch-logo-png-18.png";
+  } else if (platform == "kick") {
+    platform_name = "Kick";
+    platform_logo_url =
+      "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSlNyIfloQPTGE4GpqKvNVgJiTF0jVeO0B-Og&s";
+  }
+
+  const userNotFoundMessage = {
+    embeds: [
+      {
+        title: "Error",
+        description: `> User cannot be found!`,
+        author: { name: "Stream Updates Bot" },
+        footer: {
+          text: platform_name,
+          icon_url: platform_logo_url,
+        },
+      },
+    ],
+  };
+
+  const callback_url = `https://discord.com/api/webhooks/${discord_application_id}/${interaction.token}`;
+
+  axios.post(callback_url, userNotFoundMessage, {
+    headers: discord_headers,
+  });
+}
+
+async function send_subscription_confirmation_interactions(
+  subscriptionData,
+  res,
+) {
+  const { streamer_name, profile_pic_url, platform, interaction } =
+    subscriptionData;
+  let platform_name = "";
+  let platform_logo_url = "";
+  if (platform == "twitch") {
+    platform_name = "Twitch";
+    platform_logo_url =
+      "https://www.freepnglogos.com/uploads/purple-twitch-logo-png-18.png";
+  } else if (platform == "kick") {
+    platform_name = "Kick";
+    platform_logo_url =
+      "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSlNyIfloQPTGE4GpqKvNVgJiTF0jVeO0B-Og&s";
+  }
+
+  const subscriptionMessage = {
+    embeds: [
+      {
+        title: "Success",
+        description: `> Subscription to **${streamer_name}** added!`,
+        author: { name: "Stream Updates Bot" },
+        thumbnail: {
+          url: profile_pic_url,
+        },
+        footer: {
+          text: platform_name,
+          icon_url: platform_logo_url,
+        },
+      },
+    ],
+  };
+
+  const callback_url = `https://discord.com/api/webhooks/${discord_application_id}/${interaction.token}`;
+
+  axios.post(callback_url, subscriptionMessage, {
+    headers: discord_headers,
+  });
+}
+
+async function send_unsubscription_confirmation_interactions(
+  subscriptionData,
+  res,
+) {
+  const { streamer_name, profile_pic_url, platform, interaction } =
+    subscriptionData;
+  let platform_name = "";
+  let platform_logo_url = "";
+  if (platform == "twitch") {
+    platform_name = "Twitch";
+    platform_logo_url =
+      "https://www.freepnglogos.com/uploads/purple-twitch-logo-png-18.png";
+  } else if (platform == "kick") {
+    platform_name = "Kick";
+    platform_logo_url =
+      "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSlNyIfloQPTGE4GpqKvNVgJiTF0jVeO0B-Og&s";
+  }
+
+  const unsubscriptionMessage = {
+    embeds: [
+      {
+        title: "Success",
+        description: `> Subscription to **${streamer_name}** removed!`,
+        author: { name: "Stream Updates Bot" },
+        thumbnail: {
+          url: profile_pic_url,
+        },
+        footer: {
+          text: platform_name,
+          icon_url: platform_logo_url,
+        },
+      },
+    ],
+  };
+
+  const callback_url = `https://discord.com/api/webhooks/${discord_application_id}/${interaction.token}`;
+
+  axios.post(callback_url, unsubscriptionMessage, {
+    headers: discord_headers,
+  });
+}
 
 //Hookdeck API Calls
-async function create_ruleset(streamer_name, dm_channel_id) {
-    const url = `https://api.hookdeck.com/2025-07-01/rulesets`;
-	const data = {
-        "name": streamer_name,
-        "rules": [
-                      {
-                          "type": "transform",
-                          "transformation_id": "trs_uG3UE3yq8wHZWT"
-                      },
-                      {
-                          "type": "filter",
-                          "headers": {
-                              "twitch-channel": {
-                                  "$eq": streamer_name
-                              }
-                          }
-                      }
-                  ]
+
+async function add_profile_pic_to_transformations_env(subscriptionData, res) {
+  const { broadcaster_user_id, profile_pic_url } = subscriptionData;
+
+  const url = `https://api.hookdeck.com/2025-07-01/transformations/${twitch_hookdeck_transformation}`;
+  axios
+    .get(url, {
+      headers: hookdeck_headers,
+    })
+    .then((response) => {
+      const data = {
+        env: { ...response.data.env, [broadcaster_user_id]: profile_pic_url },
       };
-    const response = await axios.post(url, data,
-    {
-    headers: hookdeck_headers
-    });
 
-    create_connection(streamer_name, dm_channel_id);
+      axios
+        .put(url, data, {
+          headers: hookdeck_headers,
+        })
+        .then((response) => {
+          check_for_existing_connections(subscriptionData, res);
+        })
+        .catch((err) => {
+          console.error(err);
+        });
+    })
+    .catch((err) => {
+      console.error(err);
+    });
 }
 
-async function create_connection(streamer_name, dm_channel_id) {
-    const url = `https://api.hookdeck.com/2025-07-01/connections`;
-	const data = {
-        "name": `${dm_channel_id}-${streamer_name}`,
-        "source": {
-          "name": "twitch-api"
-        },
-        "destination": {
-          "name": `${dm_channel_id}-${streamer_name}`,
-          "config": {
-                "url": `https://discord.com/api/channels/${dm_channel_id}/messages`
-            }
-        },
-        "rules": [
-                      {
-                          "type": "transform",
-                          "transformation_id": "trs_uG3UE3yq8wHZWT"
-                      },
-                      {
-                          "type": "filter",
-                          "headers": {
-                              "twitch-channel": {
-                                  "$eq": streamer_name
-                              }
-                          }
-                      }
-                  ]
+async function add_profile_pic_to_kick_transformations_env(
+  subscriptionData,
+  res,
+) {
+  const { broadcaster_user_id, profile_pic_url } = subscriptionData;
+
+  const url = `https://api.hookdeck.com/2025-07-01/transformations/${kick_hookdeck_transformation}`;
+  axios
+    .get(url, {
+      headers: hookdeck_headers,
+    })
+    .then((response) => {
+      const data = {
+        env: { ...response.data.env, [broadcaster_user_id]: profile_pic_url },
       };
-    const response = await axios.post(url, data,
-    {
-    headers: hookdeck_headers
-    });
 
-    send_subscription_confirmation(streamer_name, dm_channel_id);
-}
-
-async function delete_connection(streamer_name, dm_channel_id, connection_id) {
-    const url = `https://api.hookdeck.com/2025-07-01/connections/${connection_id}`;
-    const response = await axios.delete(url,
-    {
-    headers: hookdeck_headers
-    });
-
-    send_unsubscription_confirmation(streamer_name, dm_channel_id);
-}
-
-async function check_for_existing_connections(streamer_name, dm_channel_id, action) {
-    const url = `https://api.hookdeck.com/2025-07-01/connections?name=${dm_channel_id}-${streamer_name}`;
-
-    await axios.get(url,
-    {
-        headers: hookdeck_headers
+      axios
+        .put(url, data, {
+          headers: hookdeck_headers,
+        })
+        .then((response) => {
+          check_for_existing_kick_connections(subscriptionData, res);
+        })
+        .catch((err) => {
+          console.error(err);
+        });
     })
-    .then(response => {
-        if(response.data['count'] != 0) {
-            if (action == "subscribe") {
-                user_already_subscribed(streamer_name, dm_channel_id);
-            }
-            else if (action == "unsubscribe") {
-                delete_connection(streamer_name, dm_channel_id, response.data['models'][0]['id'])
-            }
+    .catch((err) => {
+      console.error(err);
+    });
+}
+
+async function get_destination_id(subscriptionData, res) {
+  const { discord_user_id } = subscriptionData;
+
+  const url = `https://api.hookdeck.com/2025-07-01/destinations?name=${discord_user_id}`;
+  axios
+    .get(url, {
+      headers: hookdeck_headers,
+    })
+    .then((response) => {
+      if (response.data.count == 0) {
+        res.send([]);
+      } else {
+        send_subscriptions_interactions(
+          response.data.models[0].id,
+          subscriptionData,
+          res,
+        );
+      }
+    })
+    .catch((err) => {
+      console.log(err);
+    });
+}
+
+async function get_destination_description(discord_user_id) {
+  const url = `https://api.hookdeck.com/2025-07-01/destinations?name=${discord_user_id}`;
+  const response = await axios
+    .get(url, {
+      headers: hookdeck_headers,
+    })
+    .then((response) => {
+      return response;
+    })
+    .catch((err) => {
+      console.log(err);
+    });
+
+  return response;
+}
+
+async function send_subscriptions_interactions(
+  destination_id,
+  subscriptionData,
+  res,
+) {
+  const { interaction } = subscriptionData;
+  const url = `https://api.hookdeck.com/2025-07-01/connections?destination_id=${destination_id}`;
+  axios
+    .get(url, {
+      headers: hookdeck_headers,
+    })
+    .then((response) => {
+      const subscriptions = [];
+      for (let step = 0; step < response.data.count; step++) {
+        subscriptions.push(response.data.models[step].source.description);
+      }
+
+      let description = ">>> ";
+
+      for (const sub of subscriptions) {
+        description += `${sub} \n`;
+      }
+
+      if (subscriptions.length == 0) {
+        description = "> You are not subscribed to anybody.";
+      }
+
+      const subscriptionsMessage = {
+        embeds: [
+          {
+            title: "Subscriptions",
+            description: description,
+            author: {
+              name: "Stream Updates Bot",
+            },
+          },
+        ],
+      };
+
+      const callback_url = `https://discord.com/api/webhooks/${discord_application_id}/${interaction.token}`;
+
+      axios.post(callback_url, subscriptionsMessage, {
+        headers: discord_headers,
+      });
+    })
+    .catch((err) => {
+      console.log(err);
+    });
+}
+
+async function create_source(subscriptionData, res) {
+  const { streamer_name, broadcaster_user_id } = subscriptionData;
+  const url = `https://api.hookdeck.com/2025-07-01/sources`;
+  const data = {
+    name: `${broadcaster_user_id}`,
+    description: `Twitch: ${streamer_name}`,
+  };
+  const response = await axios
+    .put(url, data, {
+      headers: hookdeck_headers,
+    })
+    .then((response) => {
+      create_connection(response.data.url, subscriptionData, res);
+    })
+    .catch((err) => {
+      console.log(err);
+    });
+}
+
+async function create_kick_source(subscriptionData, res) {
+  const { streamer_name, broadcaster_user_id } = subscriptionData;
+  const url = `https://api.hookdeck.com/2025-07-01/sources`;
+  const data = {
+    name: `${broadcaster_user_id}`,
+    description: `Kick: ${streamer_name}`,
+  };
+  const response = await axios
+    .put(url, data, {
+      headers: hookdeck_headers,
+    })
+    .then((response) => {
+      create_kick_connection(response.data.url, subscriptionData, res);
+    })
+    .catch((err) => {
+      console.log(err);
+    });
+
+  return response;
+}
+
+async function get_kick_source_url(broadcaster_user_id, streamer_name) {
+  const url = `https://api.hookdeck.com/2025-07-01/sources`;
+  const data = {
+    name: `${broadcaster_user_id}`,
+    description: `Kick: ${streamer_name}`,
+  };
+  const response = await axios
+    .put(url, data, {
+      headers: hookdeck_headers,
+    })
+    .then((response) => {
+      return response.data.url;
+    })
+    .catch((err) => {
+      console.log(err);
+    });
+
+  return response;
+}
+
+async function create_destination(discord_user_id, thread_id) {
+  const url = `https://api.hookdeck.com/2025-07-01/destinations`;
+  const data = {
+    name: discord_user_id,
+    description: thread_id,
+    config: {
+      url: `https://discord.com/api/webhooks/${discord_webhook_id}/${discord_webhook_token}?thread_id=${thread_id}`,
+    },
+  };
+  axios
+    .put(url, data, {
+      headers: hookdeck_headers,
+    })
+    .then((response) => {
+      console.log(response);
+    })
+    .catch((err) => {
+      console.log(err);
+    });
+}
+
+async function create_connection(source_url, subscriptionData, res) {
+  const { broadcaster_user_id, discord_user_id } = subscriptionData;
+  const description_response =
+    await get_destination_description(discord_user_id);
+  const thread_id = description_response.data.models[0].description;
+  const url = `https://api.hookdeck.com/2025-07-01/connections`;
+  const data = {
+    name: `${broadcaster_user_id}-${discord_user_id}`,
+    source: {
+      name: `${broadcaster_user_id}`,
+    },
+    destination: {
+      name: `${discord_user_id}`,
+      description: thread_id,
+      config: {
+        url: `https://discord.com/api/webhooks/${discord_webhook_id}/${discord_webhook_token}?thread_id=${thread_id}`,
+      },
+    },
+    rules: [
+      {
+        type: "transform",
+        transformation_id: twitch_hookdeck_transformation,
+      },
+      {
+        type: "filter",
+        headers: {
+          "twitch-channel": {
+            $eq: broadcaster_user_id,
+          },
+        },
+      },
+    ],
+  };
+
+  axios.post(url, data, {
+    headers: hookdeck_headers,
+  });
+
+  create_subscription(source_url, subscriptionData);
+
+  send_subscription_confirmation_interactions(subscriptionData, res);
+}
+
+async function create_kick_connection(source_url, subscriptionData, res) {
+  const { broadcaster_user_id, discord_user_id } = subscriptionData;
+  const description_response =
+    await get_destination_description(discord_user_id);
+  const thread_id = description_response.data.models[0].description;
+  const url = `https://api.hookdeck.com/2025-07-01/connections`;
+  const data = {
+    name: `${broadcaster_user_id}-${discord_user_id}`,
+    source: {
+      name: `${broadcaster_user_id}`,
+    },
+    destination: {
+      name: `${discord_user_id}`,
+      description: thread_id,
+      config: {
+        url: `https://discord.com/api/webhooks/${discord_webhook_id}/${discord_webhook_token}?thread_id=${thread_id}`,
+      },
+    },
+    rules: [
+      {
+        type: "transform",
+        transformation_id: kick_hookdeck_transformation,
+      },
+      {
+        type: "filter",
+        headers: {
+          "kick-channel": {
+            $eq: broadcaster_user_id,
+          },
+        },
+      },
+    ],
+  };
+
+  axios.post(url, data, {
+    headers: hookdeck_headers,
+  });
+
+  create_kick_subscription(subscriptionData);
+
+  send_subscription_confirmation_interactions(subscriptionData, res);
+}
+
+async function delete_connection(connection_id, subscriptionData, res) {
+  const url = `https://api.hookdeck.com/2025-07-01/connections/${connection_id}`;
+
+  axios.delete(url, {
+    headers: hookdeck_headers,
+  });
+
+  send_unsubscription_confirmation_interactions(subscriptionData, res);
+}
+
+async function check_for_existing_connections(subscriptionData, res) {
+  const { broadcaster_user_id, action, discord_user_id } = subscriptionData;
+  const url = `https://api.hookdeck.com/2025-07-01/connections?name=${broadcaster_user_id}-${discord_user_id}`;
+
+  await axios
+    .get(url, {
+      headers: hookdeck_headers,
+    })
+    .then((response) => {
+      if (response.data["count"] != 0) {
+        if (action == "subscribe") {
+          user_already_subscribed(subscriptionData, res);
+        } else if (action == "unsubscribe") {
+          delete_connection(
+            response.data["models"][0]["id"],
+            subscriptionData,
+            res,
+          );
         }
-        else {
-            if (action == "subscribe") {
-                create_connection(streamer_name, dm_channel_id);
-            }
-            else if (action == "unsubscribe") {
-                user_not_subscribed(streamer_name, dm_channel_id);
-            }
+      } else {
+        if (action == "subscribe") {
+          create_source(subscriptionData, res);
+        } else if (action == "unsubscribe") {
+          user_not_subscribed(subscriptionData, res);
         }
+      }
     })
-    .catch(err => {
-        // Handle errors
-        console.error(err);
+    .catch((err) => {
+      console.error(err);
     });
 }
 
-app.post('/notifications', async function (req, res) {
-    console.log("Headers:"+ JSON.stringify(req.headers, null, 3));
-    console.log("Body:"+ JSON.stringify(req.body, null, 3));
- 
-    if(req.body.challenge!=null){
-       console.log("Query challenge: "+ req.query.challenge);
+async function check_for_existing_kick_connections(subscriptionData, res) {
+  const { broadcaster_user_id, action, discord_user_id } = subscriptionData;
+  const url = `https://api.hookdeck.com/2025-07-01/connections?name=${broadcaster_user_id}-${discord_user_id}`;
 
-       res.type('txt');
-       res.send(req.body.challenge);
-    }else{
-
-    const url = `https://events.hookdeck.com/e/src_qgjptZghkiAQ`;
-	const data = {
-             "embeds": [
-                {
-                   "title": "New Stream Update",
-                   "url": "https://twitch.com/" + req.body.event.broadcaster_user_name,
-                   "description": "`Channel` : *" + req.body.event.broadcaster_user_name
-                                  + "*\n\n`Title` : *" + req.body.event.title
-                                  + "*\n\n`Category` : *" + req.body.event.category_name
-                                  + "*"
-                }
-             ]
-         };
-    const response = await axios.post(url, data,
-    {
-    headers:    {
-        'Content-Type': 'application/json',
-        'Twitch-Channel': req.body.event.broadcaster_user_login,
-        'Authorization': discord_token
-    }
-    }).then(response => {
-        res.sendStatus(200);
+  await axios
+    .get(url, {
+      headers: hookdeck_headers,
     })
-    .catch(err => {
-        res.sendStatus(200);
+    .then((response) => {
+      if (response.data["count"] != 0) {
+        if (action == "subscribe") {
+          user_already_subscribed(subscriptionData, res);
+        } else if (action == "unsubscribe") {
+          delete_connection(
+            response.data["models"][0]["id"],
+            subscriptionData,
+            res,
+          );
+        }
+      } else {
+        if (action == "subscribe") {
+          create_kick_source(subscriptionData, res);
+        } else if (action == "unsubscribe") {
+          user_not_subscribed(subscriptionData, res);
+        }
+      }
+    })
+    .catch((err) => {
+      console.error(err);
     });
+}
 
-    }
- })
-
-app.use(express.json());
-
-app.post('/subscribe', (req, res) => {
-    res.send();
-    get_user_id(req.body['channel'], req.body['dm_channel_id'], "subscribe")
+app.get("/", (req, res) => {
+  res.send("Hello World!");
 });
 
-app.post('/unsubscribe', (req, res) => {
-    res.send();
-    get_user_id(req.body['channel'], req.body['dm_channel_id'], "unsubscribe")
+app.post("/", (req, res) => {
+  console.log(req.body);
 });
 
-app.get('/', (req, res) => {
-   res.send('Hello World!')
- })
+app.post("/kick", async (req, res) => {
+  const url = await get_kick_source_url(
+    req.body.broadcaster.user_id,
+    req.body.broadcaster.channel_slug,
+  );
 
- app.listen(port, function () {
-    console.log(`App listening at ${port}`)
- })
+  axios.post(url, req.body, {
+    headers: {
+      "kick-event-timestamp": req.headers["kick-event-message-timestamp"],
+    },
+  });
+
+  res.sendStatus(200);
+});
+
+//to test interactions url
+app.post("/interactions", async (req, res) => {
+  //console.log(req);
+
+  const signature = req.get("X-Signature-Ed25519");
+  const timestamp = req.get("X-Signature-Timestamp");
+  const body = req.rawBody; // rawBody is expected to be a string, not raw bytes
+
+  const isVerified = nacl.sign.detached.verify(
+    Buffer.from(timestamp + body),
+    Buffer.from(signature, "hex"),
+    Buffer.from(discord_public_key, "hex"),
+  );
+
+  if (!isVerified) {
+    return res.status(401).end("invalid request signature");
+  }
+
+  const interaction = req.body;
+
+  // Ping (type 1) -> Pong reply
+  if (interaction.type === 1) {
+    return res.json({ type: 1 }); // Pong
+  }
+
+  if (interaction.type === 2) {
+    if (interaction.data.name === "subscriptions") {
+      res.send({
+        type: 5,
+      });
+
+      const subscriptionData = {
+        interaction: interaction,
+        discord_user_id: interaction.user.id,
+      };
+      get_destination_id(subscriptionData, res);
+    } else if (interaction.data.name === "subscribe") {
+      res.send({
+        type: 5,
+      });
+
+      const streamer_name = interaction.data.options.find(
+        (option) => option.name === "streamer",
+      ).value;
+
+      const platform = interaction.data.options.find(
+        (option) => option.name === "platform",
+      ).value;
+
+      const subscriptionData = {
+        interaction: interaction,
+        streamer_name: streamer_name,
+        dm_channel_id: interaction.channel.id,
+        action: "subscribe",
+        discord_user_id: interaction.user.id,
+        platform: platform,
+      };
+
+      if (platform == "twitch") {
+        get_twitch_user_id(subscriptionData, res);
+      } else if (platform == "kick") {
+        get_kick_user_id(subscriptionData, res);
+      }
+    } else if (interaction.data.name === "unsubscribe") {
+      res.send({
+        type: 5,
+      });
+
+      const streamer_name = interaction.data.options.find(
+        (option) => option.name === "streamer",
+      ).value;
+
+      const platform = interaction.data.options.find(
+        (option) => option.name === "platform",
+      ).value;
+
+      const subscriptionData = {
+        interaction: interaction,
+        streamer_name: streamer_name,
+        dm_channel_id: interaction.channel.id,
+        action: "unsubscribe",
+        discord_user_id: interaction.user.id,
+        platform: platform,
+      };
+
+      if (platform == "twitch") {
+        get_twitch_user_id(subscriptionData, res);
+      } else if (platform == "kick") {
+        get_kick_user_id(subscriptionData, res);
+      }
+    }
+  }
+
+  if (interaction.type === 3) {
+    if (interaction.data.custom_id === "get_started") {
+      get_private_thread_id(interaction.member.user.id);
+      res.send({
+        type: 6,
+      });
+    }
+  }
+});
+
+app.listen(port, function () {
+  console.log(`App listening at ${port}`);
+});

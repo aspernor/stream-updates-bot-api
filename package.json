@@ -13,8 +13,17 @@
   "author": "Joshua Izumba",
   "homepage": "https://github.com/joshuasizumba-ops/stream-updates-bot-api",
   "dependencies": {
+    "@ngrok/ngrok": "^1.7.0",
     "axios": "*",
     "dotenv": "*",
-    "express": "*"
+    "express": "*",
+    "node": "18.18.0",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "eslint": "^9.39.2",
+    "globals": "^17.0.0",
+    "prettier": "^3.7.4"
   }
 }
