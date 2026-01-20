@@ -31,6 +31,10 @@ const discord_application_id = process.env.DISCORD_APPLICATION_ID;
 const twitch_hookdeck_transformation =
   process.env.TWITCH_HOOKDECK_TRANSFORMATION;
 const kick_hookdeck_transformation = process.env.KICK_HOOKDECK_TRANSFORMATION;
+const discord_bot_log_url = process.env.DISCORD_BOT_LOGO_URL;
+const twitch_logo_url = process.env.TWITCH_LOGO_URL;
+const kick_logo_url =  process.env.KICK_LOGO_URL;
+
 
 const twitch_headers = {
   "Content-Type": "application/json",
@@ -51,6 +55,11 @@ const hookdeck_headers = {
   "Content-Type": "application/json",
   Authorization: hookdeck_token,
 };
+
+const bot_footer = {
+          text: "Stream Updates Bot",
+          icon_url: discord_bot_log_url,
+        }
 
 //ngrok setup, set DEVELOPMENT env variable to true. Don't forget to change interaction endpoint in discord and kick application portal
 
@@ -289,36 +298,29 @@ async function send_instruction_message(thread_id, dm_channel_id) {
     embeds: [
       {
         title: "**Welcome!**",
-        description:
-          "Use </subscribe:1460766853688332361> to subscribe to updates.\n\n Use </unsubscribe:1460768302581289063> to unsubscribe from updates.\n\n Use </subscriptions:1460521521402609771> to view active subscriptions.",
-        author: {
-          name: "Stream Updates Bot",
-        },
         fields: [
           {
-            name: "\b",
-            value: " ",
-            inline: "false",
+            name: "Subscribe To Updates",
+            value: "> </subscribe:1460766853688332361>  `platform`  `streamer`",
+          },
+          {
+            name: "Unsubscribe From Updates",
+            value: "> </unsubscribe:1460768302581289063>  `platform`  `streamer`",
+          },
+          {
+            name: "View Active Subscriptions",
+            value: "> </subscriptions:1460521521402609771>",
           },
           {
             name: "Your Notifications Thread",
-            value: `<#${thread_id}>\n\nOpen the thread.\nTap the thread name.\nGo to **Notification Settings** (🔔).\nEnable for **All Messages**.`,
-            inline: true,
-          },
-          {
-            name: "\b",
-            value: " ",
-            inline: "false",
+            value: `>>> <#${thread_id}>\n1. Open the thread\n2. Tap the thread name\n3. Go to **Notification Settings** (🔔)\n4. Enable for **All Messages**`
           },
           {
             name: "Donate",
             value: "<#1460978877533786205>",
-            inline: true,
           },
         ],
-        footer: {
-          text: "Donations are optional but appreciated :)\nDon't forget to turn on notifications.",
-        },
+        footer: bot_footer,
       },
     ],
   };
@@ -337,11 +339,11 @@ async function user_already_subscribed(subscriptionData, res) {
   if (platform == "twitch") {
     platform_name = "Twitch";
     platform_logo_url =
-      "https://www.freepnglogos.com/uploads/purple-twitch-logo-png-18.png";
+      twitch_logo_url;
   } else if (platform == "kick") {
     platform_name = "Kick";
     platform_logo_url =
-      "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSlNyIfloQPTGE4GpqKvNVgJiTF0jVeO0B-Og&s";
+      kick_logo_url;
   }
 
   const userAlreadySubscribedMessage = (streamer_name) => ({
@@ -349,11 +351,8 @@ async function user_already_subscribed(subscriptionData, res) {
       {
         title: "Error",
         description: `> You are already subscribed to **${streamer_name}**!`,
-        author: { name: "Stream Updates Bot" },
-        footer: {
-          text: platform_name,
-          icon_url: platform_logo_url,
-        },
+        author: { name: platform_name, icon_url: platform_logo_url },
+        footer: bot_footer,
       },
     ],
   });
@@ -373,11 +372,11 @@ async function user_not_subscribed(subscriptionData, res) {
   if (platform == "twitch") {
     platform_name = "Twitch";
     platform_logo_url =
-      "https://www.freepnglogos.com/uploads/purple-twitch-logo-png-18.png";
+      twitch_logo_url;
   } else if (platform == "kick") {
     platform_name = "Kick";
     platform_logo_url =
-      "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSlNyIfloQPTGE4GpqKvNVgJiTF0jVeO0B-Og&s";
+      kick_logo_url;
   }
 
   const userNotSubscribedMessage = (streamer_name) => ({
@@ -385,11 +384,8 @@ async function user_not_subscribed(subscriptionData, res) {
       {
         title: "Error",
         description: `> You are not subscribed to **${streamer_name}**!`,
-        author: { name: "Stream Updates Bot" },
-        footer: {
-          text: platform_name,
-          icon_url: platform_logo_url,
-        },
+        author: { name: platform_name, icon_url: platform_logo_url },
+        footer: bot_footer,
       },
     ],
   });
@@ -408,11 +404,11 @@ async function user_cannot_be_found(subscriptionData, res) {
   if (platform == "twitch") {
     platform_name = "Twitch";
     platform_logo_url =
-      "https://www.freepnglogos.com/uploads/purple-twitch-logo-png-18.png";
+      twitch_logo_url;
   } else if (platform == "kick") {
     platform_name = "Kick";
     platform_logo_url =
-      "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSlNyIfloQPTGE4GpqKvNVgJiTF0jVeO0B-Og&s";
+      kick_logo_url;
   }
 
   const userNotFoundMessage = {
@@ -420,11 +416,8 @@ async function user_cannot_be_found(subscriptionData, res) {
       {
         title: "Error",
         description: `> User cannot be found!`,
-        author: { name: "Stream Updates Bot" },
-        footer: {
-          text: platform_name,
-          icon_url: platform_logo_url,
-        },
+        author: { name: platform_name, icon_url: platform_logo_url },
+        footer: bot_footer,
       },
     ],
   };
@@ -447,11 +440,11 @@ async function send_subscription_confirmation_interactions(
   if (platform == "twitch") {
     platform_name = "Twitch";
     platform_logo_url =
-      "https://www.freepnglogos.com/uploads/purple-twitch-logo-png-18.png";
+      twitch_logo_url;
   } else if (platform == "kick") {
     platform_name = "Kick";
     platform_logo_url =
-      "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSlNyIfloQPTGE4GpqKvNVgJiTF0jVeO0B-Og&s";
+      kick_logo_url;
   }
 
   const subscriptionMessage = {
@@ -459,14 +452,11 @@ async function send_subscription_confirmation_interactions(
       {
         title: "Success",
         description: `> Subscription to **${streamer_name}** added!`,
-        author: { name: "Stream Updates Bot" },
+        author: { name: platform_name, icon_url: platform_logo_url },
         thumbnail: {
           url: profile_pic_url,
         },
-        footer: {
-          text: platform_name,
-          icon_url: platform_logo_url,
-        },
+        footer: bot_footer,
       },
     ],
   };
@@ -489,11 +479,11 @@ async function send_unsubscription_confirmation_interactions(
   if (platform == "twitch") {
     platform_name = "Twitch";
     platform_logo_url =
-      "https://www.freepnglogos.com/uploads/purple-twitch-logo-png-18.png";
+      twitch_logo_url;
   } else if (platform == "kick") {
     platform_name = "Kick";
     platform_logo_url =
-      "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSlNyIfloQPTGE4GpqKvNVgJiTF0jVeO0B-Og&s";
+      kick_logo_url;
   }
 
   const unsubscriptionMessage = {
@@ -501,14 +491,11 @@ async function send_unsubscription_confirmation_interactions(
       {
         title: "Success",
         description: `> Subscription to **${streamer_name}** removed!`,
-        author: { name: "Stream Updates Bot" },
+        author: { name: platform_name, icon_url: platform_logo_url },
         thumbnail: {
           url: profile_pic_url,
         },
-        footer: {
-          text: platform_name,
-          icon_url: platform_logo_url,
-        },
+        footer: bot_footer,
       },
     ],
   };
@@ -655,9 +642,7 @@ async function send_subscriptions_interactions(
           {
             title: "Subscriptions",
             description: description,
-            author: {
-              name: "Stream Updates Bot",
-            },
+            footer: bot_footer,
           },
         ],
       };
