@@ -619,20 +619,10 @@ async function send_subscriptions_interactions(
         ],
       };
 
-      const callback_url = `https://discord.com/api/webhooks/${discord_application_id}/${interaction.token}`;
-
-      axios
-        .post(callback_url, subscriptionsMessage)
-        .then((response) => {
-          console.log(response);
-        })
-        .catch((err) => {
-          const dm_url = `https://discord.com/api/channels/${dm_channel_id}/messages`;
-
-          axios.post(dm_url, subscriptionsMessage, {
-            headers: discord_headers,
-          });
-        });
+      res.send({
+        type: 4,
+        data: subscriptionsMessage,
+      });
     })
     .catch((err) => {
       console.log(err);
@@ -979,9 +969,6 @@ app.post("/interactions", async (req, res) => {
 
   if (interaction.type === 2) {
     if (interaction.data.name === "subscriptions") {
-      res.send({
-        type: 5,
-      });
 
       const subscriptionData = {
         interaction: interaction,
