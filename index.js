@@ -587,7 +587,7 @@ async function send_subscriptions_interactions(
   subscriptionData,
   res,
 ) {
-  const { interaction } = subscriptionData;
+  const { interaction, dm_channel_id } = subscriptionData;
   const url = `https://api.hookdeck.com/2025-07-01/connections?destination_id=${destination_id}`;
   axios
     .get(url, {
@@ -627,7 +627,11 @@ async function send_subscriptions_interactions(
           console.log(response);
         })
         .catch((err) => {
-          console.log(err);
+          const dm_url = `https://discord.com/api/channels/${dm_channel_id}/messages`;
+
+          axios.post(dm_url, subscriptionsMessage, {
+            headers: discord_headers,
+          });
         });
     })
     .catch((err) => {
