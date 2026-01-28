@@ -375,7 +375,7 @@ async function user_already_subscribed(subscriptionData, res) {
 
   res.send({
     type: 4,
-    data: userAlreadySubscribedMessage,
+    data: userAlreadySubscribedMessage(streamer_name),
   });
 }
 
@@ -405,7 +405,7 @@ async function user_not_subscribed(subscriptionData, res) {
 
   res.send({
     type: 4,
-    data: userNotSubscribedMessage,
+    data: userNotSubscribedMessage(streamer_name),
   });
 }
 
