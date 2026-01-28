@@ -375,7 +375,14 @@ async function user_already_subscribed(subscriptionData, res) {
 
   const callback_url = `https://discord.com/api/webhooks/${discord_application_id}/${interaction.token}`;
 
-  axios.post(callback_url, userAlreadySubscribedMessage(streamer_name));
+  axios
+    .post(callback_url, userAlreadySubscribedMessage(streamer_name))
+    .then((response) => {
+      console.log(response);
+    })
+    .catch((err) => {
+      console.log(err);
+    });
 }
 
 async function user_not_subscribed(subscriptionData, res) {
@@ -404,7 +411,14 @@ async function user_not_subscribed(subscriptionData, res) {
 
   const callback_url = `https://discord.com/api/webhooks/${discord_application_id}/${interaction.token}`;
 
-  axios.post(callback_url, userNotSubscribedMessage(streamer_name));
+  axios
+    .post(callback_url, userNotSubscribedMessage(streamer_name))
+    .then((response) => {
+      console.log(response);
+    })
+    .catch((err) => {
+      console.log(err);
+    });
 }
 
 async function user_cannot_be_found(subscriptionData, res) {
@@ -432,7 +446,14 @@ async function user_cannot_be_found(subscriptionData, res) {
 
   const callback_url = `https://discord.com/api/webhooks/${discord_application_id}/${interaction.token}`;
 
-  axios.post(callback_url, userNotFoundMessage);
+  axios
+    .post(callback_url, userNotFoundMessage)
+    .then((response) => {
+      console.log(response);
+    })
+    .catch((err) => {
+      console.log(err);
+    });
 }
 
 async function send_subscription_confirmation_interactions(
@@ -467,7 +488,14 @@ async function send_subscription_confirmation_interactions(
 
   const callback_url = `https://discord.com/api/webhooks/${discord_application_id}/${interaction.token}`;
 
-  axios.post(callback_url, subscriptionMessage);
+  axios
+    .post(callback_url, subscriptionMessage)
+    .then((response) => {
+      console.log(response);
+    })
+    .catch((err) => {
+      console.log(err);
+    });
 }
 
 async function send_unsubscription_confirmation_interactions(
@@ -502,7 +530,14 @@ async function send_unsubscription_confirmation_interactions(
 
   const callback_url = `https://discord.com/api/webhooks/${discord_application_id}/${interaction.token}`;
 
-  axios.post(callback_url, unsubscriptionMessage);
+  axios
+    .post(callback_url, unsubscriptionMessage)
+    .then((response) => {
+      console.log(response);
+    })
+    .catch((err) => {
+      console.log(err);
+    });
 }
 
 //Hookdeck API Calls
@@ -586,7 +621,14 @@ async function send_subscriptions_interactions(
 
       const callback_url = `https://discord.com/api/webhooks/${discord_application_id}/${interaction.token}`;
 
-      axios.post(callback_url, subscriptionsMessage);
+      axios
+        .post(callback_url, subscriptionsMessage)
+        .then((response) => {
+          console.log(response);
+        })
+        .catch((err) => {
+          console.log(err);
+        });
     })
     .catch((err) => {
       console.log(err);
@@ -908,7 +950,7 @@ app.post("/kick", async (req, res) => {
 
 //to test interactions url
 app.post("/interactions", async (req, res) => {
-  //console.log(req);
+  console.log(req);
 
   const signature = req.get("X-Signature-Ed25519");
   const timestamp = req.get("X-Signature-Timestamp");
