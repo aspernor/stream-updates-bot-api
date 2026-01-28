@@ -985,6 +985,7 @@ app.post("/interactions", async (req, res) => {
 
       const subscriptionData = {
         interaction: interaction,
+        dm_channel_id: interaction.channel.id,
         discord_user_id: interaction.user.id,
       };
       get_destination_id(subscriptionData, res);
