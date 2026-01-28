@@ -373,16 +373,10 @@ async function user_already_subscribed(subscriptionData, res) {
     ],
   });
 
-  const callback_url = `https://discord.com/api/webhooks/${discord_application_id}/${interaction.token}`;
-
-  axios
-    .post(callback_url, userAlreadySubscribedMessage(streamer_name))
-    .then((response) => {
-      console.log(response);
-    })
-    .catch((err) => {
-      console.log(err);
-    });
+  res.send({
+    type: 4,
+    data: userAlreadySubscribedMessage,
+  });
 }
 
 async function user_not_subscribed(subscriptionData, res) {
@@ -409,16 +403,10 @@ async function user_not_subscribed(subscriptionData, res) {
     ],
   });
 
-  const callback_url = `https://discord.com/api/webhooks/${discord_application_id}/${interaction.token}`;
-
-  axios
-    .post(callback_url, userNotSubscribedMessage(streamer_name))
-    .then((response) => {
-      console.log(response);
-    })
-    .catch((err) => {
-      console.log(err);
-    });
+  res.send({
+    type: 4,
+    data: userNotSubscribedMessage,
+  });
 }
 
 async function user_cannot_be_found(subscriptionData, res) {
@@ -444,16 +432,10 @@ async function user_cannot_be_found(subscriptionData, res) {
     ],
   };
 
-  const callback_url = `https://discord.com/api/webhooks/${discord_application_id}/${interaction.token}`;
-
-  axios
-    .post(callback_url, userNotFoundMessage)
-    .then((response) => {
-      console.log(response);
-    })
-    .catch((err) => {
-      console.log(err);
-    });
+  res.send({
+    type: 4,
+    data: userNotFoundMessage,
+  });
 }
 
 async function send_subscription_confirmation_interactions(
@@ -486,16 +468,10 @@ async function send_subscription_confirmation_interactions(
     ],
   };
 
-  const callback_url = `https://discord.com/api/webhooks/${discord_application_id}/${interaction.token}`;
-
-  axios
-    .post(callback_url, subscriptionMessage)
-    .then((response) => {
-      console.log(response);
-    })
-    .catch((err) => {
-      console.log(err);
-    });
+  res.send({
+    type: 4,
+    data: subscriptionMessage,
+  });
 }
 
 async function send_unsubscription_confirmation_interactions(
@@ -528,16 +504,10 @@ async function send_unsubscription_confirmation_interactions(
     ],
   };
 
-  const callback_url = `https://discord.com/api/webhooks/${discord_application_id}/${interaction.token}`;
-
-  axios
-    .post(callback_url, unsubscriptionMessage)
-    .then((response) => {
-      console.log(response);
-    })
-    .catch((err) => {
-      console.log(err);
-    });
+  res.send({
+    type: 4,
+    data: unsubscriptionMessage,
+  });
 }
 
 //Hookdeck API Calls
@@ -969,7 +939,6 @@ app.post("/interactions", async (req, res) => {
 
   if (interaction.type === 2) {
     if (interaction.data.name === "subscriptions") {
-
       const subscriptionData = {
         interaction: interaction,
         dm_channel_id: interaction.channel.id,
@@ -977,10 +946,6 @@ app.post("/interactions", async (req, res) => {
       };
       get_destination_id(subscriptionData, res);
     } else if (interaction.data.name === "subscribe") {
-      res.send({
-        type: 5,
-      });
-
       const streamer_name = interaction.data.options.find(
         (option) => option.name === "streamer",
       ).value;
@@ -1004,10 +969,6 @@ app.post("/interactions", async (req, res) => {
         get_kick_user_id(subscriptionData, res);
       }
     } else if (interaction.data.name === "unsubscribe") {
-      res.send({
-        type: 5,
-      });
-
       const streamer_name = interaction.data.options.find(
         (option) => option.name === "streamer",
       ).value;
